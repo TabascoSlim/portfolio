@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D'Amonté Jones · Portfolio</title>
+<meta name="description" content="Projects by D'Amonté Jones: QuestForge, Airwaves and Agent Arena, built with AI coding tools.">
+<style>
+  /* Portfolio surface mockup, PlayStation-era look, seen from straight above.
+     Every letter of each project name is its own small 3D model, rocking on the water like a moored boat.
+     The buttons are invisible hit areas over each name; the captions stay as crisp page text.
+     Clicking a name glides the camera over to it. From there, scrolling sinks through the surface into that
+     project's own sections: what it is, a closer look, then links. Scrolling up comes back. */
+  :root {
+    --ink: #ffffff;
+    --ink-quiet: #d9f0ff;
+    --shadow: #04203f;
+    --shallow: #2a8fd0;
+    --deep: #0d4f93;
+    --outline: 0 1px 2px rgba(4, 32, 63, 1), 0 0 6px rgba(4, 32, 63, 0.8), 0 1px 14px rgba(4, 32, 63, 0.6);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    background: linear-gradient(180deg, var(--shallow), var(--deep)); /* shown if WebGL is unavailable */
+    color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+  /* The name uses the same bold white lettering as the project names, with the same light blue-grey edge */
+  .who { position: fixed; top: clamp(16px, 4vh, 40px); left: clamp(16px, 4vw, 48px); z-index: 4; pointer-events: none; }
+  .who h1 {
+    font-size: clamp(1.5rem, 2.6vw, 2.1rem); font-weight: 700; letter-spacing: 0.06em; line-height: 1;
+    text-shadow: 1px 1px 0 #dcecf7, 2px 2px 0 #bfd8ea, 3px 3px 0 #a3c3dc, 5px 7px 6px rgba(4, 32, 63, 0.45);
+  }
+
+  /* What shows when: the overview (all three names), a chosen project, and once you've dived */
+  .surface-ui, .focus-ui { transition: opacity 0.35s ease; }
+  .focused .surface-ui, :root:not(.focused) .focus-ui, .dived .focus-only-top {
+    opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 0.35s ease, visibility 0s 0.35s;
+  }
+  .back {
+    position: fixed; top: calc(clamp(16px, 4vh, 40px) + 46px); left: clamp(16px, 4vw, 48px); z-index: 4;
+    font: inherit; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.03em; color: var(--ink);
+    background: rgba(3, 22, 48, 0.45); border: 2px solid rgba(160, 205, 235, 0.5); padding: 7px 14px; cursor: pointer;
+  }
+  .back:hover { background: rgba(20, 70, 120, 0.65); }
+  .back:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  .project { display: none; }
+
+  /* Cloud intro: the name and an Enter button above the clouds; the rest of the page waits */
+  .intro {
+    position: fixed; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 26px; padding: 16px; text-align: center; transition: opacity 0.6s ease;
+  }
+  .intro h1 {
+    font-size: clamp(2.4rem, 7vw, 5.2rem); font-weight: 700; letter-spacing: 0.06em; line-height: 1;
+    text-shadow: 1px 1px 0 #a9c8e2, 2px 2px 0 #8fb2d2, 3px 3px 0 #7da2c6, 4px 4px 0 #6b92b9, 0 0 18px rgba(20, 60, 110, 0.55), 6px 9px 10px rgba(20, 60, 110, 0.45);
+  }
+  .intro button {
+    font: inherit; font-weight: 700; font-size: 1.15rem; letter-spacing: 0.06em; color: var(--ink); cursor: pointer;
+    background: rgba(20, 70, 120, 0.55); border: 2px solid rgba(255, 255, 255, 0.75); padding: 12px 34px;
+    box-shadow: 4px 4px 0 rgba(10, 40, 80, 0.35);
+  }
+  .intro button:hover { background: rgba(20, 70, 120, 0.8); }
+  .intro button:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+  .intro p { font-weight: 600; color: #f2f8ff; text-shadow: 0 1px 2px rgba(20, 60, 100, 1), 0 0 8px rgba(20, 60, 100, 0.7); }
+  .in-intro .who, .in-intro #surface, .in-intro .hint { opacity: 0; visibility: hidden; }
+  .who, #surface, .hint { transition: opacity 0.8s ease; }
+  .intro.leaving { opacity: 0; pointer-events: none; }
+  .intro[hidden] { display: none; }
+  /* deep down, the top "Back to the surface" button gets out of the way (the one at the bottom remains) */
+  .deep .back { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 0.35s ease, visibility 0s 0.35s; }
+  .project.open { display: block; }
+
+  /* The dive: an empty stretch to sink through, then the sections drift past */
+  .surface-room { height: 100vh; }
+  .sink-room { height: 75vh; }
+  /* once underwater, a dark band at the top keeps the name and back button readable over passing text */
+  .topshade { position: fixed; left: 0; right: 0; top: 0; height: 150px; z-index: 3; pointer-events: none; opacity: 0; transition: opacity 0.35s ease;
+    background: linear-gradient(180deg, rgba(1, 12, 30, 0.95) 0%, rgba(1, 12, 30, 0.9) 60%, rgba(1, 12, 30, 0)); }
+  .dived .topshade { opacity: 1; }
+  .depths { position: relative; z-index: 2; padding: 0 16px 30vh; }
+  .zone {
+    max-width: 620px; margin: 0 auto 55vh; padding: 28px clamp(20px, 4vw, 36px) 30px;
+    background: rgba(3, 22, 48, 0.55); border: 2px solid rgba(160, 205, 235, 0.35);
+    box-shadow: 6px 6px 0 rgba(1, 10, 24, 0.45);
+    scroll-margin-top: 20vh;
+  }
+  .zone h2 {
+    font-size: clamp(1.6rem, 3.4vw, 2.3rem); font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; margin-bottom: 14px;
+    text-shadow: 1px 1px 0 #bfd8ea, 2px 2px 0 #8fb2cc;
+  }
+  .zone p { font-size: 1.04rem; line-height: 1.6; color: #e4f2ff; max-width: 62ch; }
+  .zone p + p, .zone p + h3, .zone ul + p, .zone .shots + p, .zone .shots + h3 { margin-top: 12px; }
+  .zone h3 { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.03em; margin: 20px 0 8px; }
+  .stack { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+  .stack li { font-size: 0.92rem; font-weight: 600; padding: 4px 10px; border: 2px solid rgba(160, 205, 235, 0.4); background: rgba(160, 205, 235, 0.08); }
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 4px; }
+  .shots .wide { grid-column: 1 / -1; }
+  .shots img { cursor: zoom-in; }
+  @media (max-width: 520px) { .shots { grid-template-columns: 1fr; } }
+  /* a tapped screenshot opens large */
+  .viewer { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; padding: 16px; background: rgba(1, 10, 24, 0.86); cursor: zoom-out; }
+  .viewer[hidden] { display: none; }
+  .viewer img { max-width: min(1200px, 100%); max-height: 86vh; width: auto; height: auto; border: 2px solid rgba(160, 205, 235, 0.6); }
+  .viewer p { color: var(--ink-quiet); font-weight: 600; margin-top: 10px; text-align: center; }
+  .shots img { display: block; width: 100%; height: auto; border: 2px solid rgba(160, 205, 235, 0.35); }
+  .shots figcaption { font-size: 0.85rem; color: #a9cbe6; margin-top: 4px; }
+  .gif-slot {
+    aspect-ratio: 16 / 9; display: grid; place-items: center; text-align: center; padding: 8px;
+    border: 2px dashed rgba(160, 205, 235, 0.45); color: #a9cbe6; font-size: 0.9rem;
+  }
+  .links { list-style: none; display: grid; gap: 10px; margin-top: 4px; }
+  .links a {
+    display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; color: var(--ink); text-decoration: none;
+    font-weight: 700; border: 2px solid rgba(160, 205, 235, 0.45); background: rgba(160, 205, 235, 0.07);
+  }
+  .links a span { font-weight: 500; color: #a9cbe6; overflow-wrap: anywhere; text-align: right; }
+  .links a:hover { background: rgba(160, 205, 235, 0.18); }
+  .links a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .ends { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .to-surface {
+    display: block; font: inherit; font-weight: 700; font-size: 1.05rem; letter-spacing: 0.04em;
+    color: var(--ink); background: rgba(3, 22, 48, 0.55); border: 2px solid rgba(160, 205, 235, 0.55);
+    padding: 12px 22px; cursor: pointer; box-shadow: 4px 4px 0 rgba(1, 10, 24, 0.45);
+  }
+  .to-surface:hover { background: rgba(20, 70, 120, 0.7); }
+  .to-surface:focus-visible, .gauge a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+  /* Depth gauge on the right edge: where you are, and a quick way to jump */
+  .gauge {
+    position: fixed; right: clamp(10px, 2.5vw, 30px); top: 50%; transform: translateY(-50%); z-index: 4;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 10px; text-shadow: var(--outline);
+  }
+  .gauge .reading { font-weight: 700; font-size: 0.95rem; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+  .gauge ol { list-style: none; border-right: 2px solid rgba(217, 240, 255, 0.5); padding-right: 10px; display: flex; flex-direction: column; gap: 14px; }
+  .gauge a { color: var(--ink-quiet); text-decoration: none; font-size: 0.85rem; font-weight: 600; }
+  .gauge a:hover, .gauge a[aria-current="true"] { color: var(--ink); }
+  .gauge a[aria-current="true"]::after { content: ""; display: inline-block; width: 8px; height: 8px; margin-left: 8px; background: var(--ink); vertical-align: 1px; }
+  @media (max-width: 720px) { .gauge ol { display: none; } .gauge { top: clamp(16px, 4vh, 40px); transform: none; } }
+
+  .float {
+    position: fixed; z-index: 1; left: var(--x); top: var(--y); transform: translate(-50%, -50%);
+    font: inherit; color: inherit; background: none; border: 0; cursor: pointer;
+    padding: 26px 34px; border-radius: 18px; text-align: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .float:focus-visible { outline: 2px solid var(--ink); outline-offset: -8px; }
+  /* The word is laid out in the page (so the 3D letters know where to sit) but drawn by WebGL */
+  .word {
+    display: block; font-size: clamp(2rem, 6.2vw, 4.6rem); font-weight: 700;
+    letter-spacing: 0.06em; line-height: 1; white-space: nowrap; color: var(--ink);
+  }
+  .webgl .word { color: transparent; }
+  .sub {
+    display: block; margin-top: 14px; white-space: nowrap;
+    font-size: clamp(0.85rem, 1.4vw, 1rem); font-weight: 600; color: var(--ink-quiet); text-shadow: var(--outline);
+  }
+  #p1 { --x: 27%; --y: 40%; }
+  #p2 { --x: 68%; --y: 33%; }
+  #p3 { --x: 50%; --y: 69%; }
+  @media (max-width: 720px) {
+    #p1 { --x: 50%; --y: 31%; }
+    #p2 { --x: 50%; --y: 51%; }
+    #p3 { --x: 50%; --y: 71%; }
+    .float { padding: 18px 20px; }
+  }
+  .hint {
+    position: fixed; z-index: 1; left: 0; right: 0; bottom: clamp(14px, 3.5vh, 30px); text-align: center; padding: 0 16px; pointer-events: none;
+    font-size: 0.92rem; font-weight: 600; color: var(--ink-quiet); text-shadow: var(--outline);
+  }
+</style>
+</head>
+<body>
+<canvas id="water" aria-hidden="true"></canvas>
+
+<div class="intro" id="intro" hidden>
+  <button type="button" id="enter">Enter</button>
+  <p>or press any key</p>
+</div>
+
+<header class="who">
+  <h1>D&rsquo;Amont&eacute; Jones</h1>
+</header>
+
+<main class="surface-ui" id="surface">
+  <button class="float" id="p1" type="button" data-name="QuestForge"><span class="word">QuestForge</span><span class="sub">a habit tracker played as an RPG</span></button>
+  <button class="float" id="p2" type="button" data-name="Airwaves"><span class="word">Airwaves</span><span class="sub">live radio on a 3D globe</span></button>
+  <button class="float" id="p3" type="button" data-name="Agent Arena"><span class="word">Agent Arena</span><span class="sub">AI personalities playing games</span></button>
+</main>
+
+<p class="hint" id="hint" aria-live="polite">Move across the water. Pick a project to dive in.</p>
+<div class="topshade" aria-hidden="true"></div>
+<button class="back focus-ui" type="button" id="back">&larr; Back to the surface</button>
+
+<nav class="gauge focus-ui" aria-label="Depth">
+  <span class="reading" id="reading">Surface</span>
+  <ol id="gauge-list"></ol>
+</nav>
+
+<!-- Each project's dive. Only the chosen one is shown, so the overview page itself doesn't scroll. -->
+<div id="dive" hidden>
+  <div class="surface-room" id="top"></div>
+  <div class="sink-room"></div>
+  <div class="depths">
+
+    <article class="project" data-project="0" aria-label="QuestForge">
+      <section class="zone" data-label="What it is">
+        <h2>QuestForge</h2>
+        <p>A cozy retro RPG that turns small daily tasks into quests. An AI game master posts a few quests each morning, like a focus sprint, a stretch break or a message to a friend. Finishing them earns XP, opens treasure chests and keeps your campfire burning.</p>
+        <h3>Built with</h3>
+        <ul class="stack"><li>Next.js</li><li>FastAPI (Python)</li><li>Rust (axum)</li><li>PostgreSQL</li><li>Redis</li><li>Docker</li><li>Claude or OpenAI API</li></ul>
+      </section>
+      <section class="zone" data-label="A closer look">
+        <h2>A closer look</h2>
+        <div class="shots">
+          <figure class="wide"><img src="media/questforge/quest-complete.gif" width="680" height="600" loading="lazy" decoding="async" alt="Finishing a quest: the chest opens and XP is added"><figcaption>Finishing a quest opens its chest</figcaption></figure>
+          <figure><img src="media/questforge/status.jpg" width="800" height="600" loading="lazy" decoding="async" alt="Status page with level, XP, streak and treasure chests"><figcaption>Status</figcaption></figure>
+          <figure><img src="media/questforge/quests.jpg" width="800" height="600" loading="lazy" decoding="async" alt="The quest log with the day's quests"><figcaption>Quest log</figcaption></figure>
+          <figure><img src="media/questforge/ranks.jpg" width="800" height="600" loading="lazy" decoding="async" alt="Guild leaderboard with pixel avatars"><figcaption>Guild ranks</figcaption></figure>
+          <figure><img src="media/questforge/wardrobe.jpg" width="800" height="600" loading="lazy" decoding="async" alt="Avatar wardrobe with dropdowns for hair, outfit and hat"><figcaption>Wardrobe</figcaption></figure>
+        </div>
+        <p>Five services run together: the Next.js interface, a FastAPI backend for accounts, quests and the AI game master, and a Rust engine that owns the game rules (XP, levels, streaks and leaderboards, kept in Redis). Guilds let small groups join with an invite code and compete on a shared board.</p>
+        <p>I built it with Claude as my coding partner, taking an unfinished prototype to something an employer can open and play. Along the way we fixed a frontend that wouldn't build in Docker, a Rust container that kept running a placeholder build, and logins that broke on a library update.</p>
+      </section>
+      <section class="zone" data-label="Links">
+        <h2>Try it</h2>
+        <ul class="links">
+          <li><a href="https://questforge-nine.vercel.app" target="_blank" rel="noopener">Live demo <span>questforge-nine.vercel.app</span></a></li>
+          <li><a href="https://github.com/TabascoSlim/questforge" target="_blank" rel="noopener">Code <span>github.com/TabascoSlim/questforge</span></a></li>
+        </ul>
+        <h3>Contact</h3>
+        <ul class="links contact"></ul>
+      </section>
+    </article>
+
+    <article class="project" data-project="1" aria-label="Airwaves">
+      <section class="zone" data-label="What it is">
+        <h2>Airwaves</h2>
+        <p>Live radio from around the world on a 3D globe. Click anywhere on Earth to hear stations broadcasting there right now, with their local time, whether it's day or night, what song is playing and a fact about the place.</p>
+        <h3>Built with</h3>
+        <ul class="stack"><li>JavaScript</li><li>globe.gl (WebGL)</li><li>Radio Browser API</li><li>Wikipedia and Wikidata</li><li>Vercel serverless function</li><li>Node test runner</li></ul>
+      </section>
+      <section class="zone" data-label="A closer look">
+        <h2>A closer look</h2>
+        <div class="shots">
+          <figure class="wide"><img src="media/airwaves/day-and-night.jpg" width="1424" height="669" loading="lazy" decoding="async" alt="A London station playing on the Day and Night globe"><figcaption>The Day &amp; Night globe, with a London station playing</figcaption></figure>
+          <figure class="wide"><img src="media/airwaves/vintage-dial-fun-fact.jpg" width="1424" height="669" loading="lazy" decoding="async" alt="The Vintage Dial globe with a fun fact card"><figcaption>The Vintage Dial style, with a fact about the place</figcaption></figure>
+          <figure class="wide"><img src="media/airwaves/airwaves-tuning.gif" width="760" height="315" loading="lazy" decoding="async" alt="Clicking the globe near Houston finds stations within 300 km and starts the nearest; Random then jumps to a station in Virginia"><figcaption>Click near a city to tune in, or let Random pick</figcaption></figure>
+        </div>
+        <p>The default globe shows where the sun is right now, updated every minute. A small serverless function reads the song title from each station's stream, with checks so it can't be pointed at private addresses. If a station doesn't start within 8 seconds, Airwaves moves on to the next one.</p>
+        <p>You can also pick a random station by genre, language and continent, and 18 automated tests cover the trickier parts.</p>
+      </section>
+      <section class="zone" data-label="Links">
+        <h2>Try it</h2>
+        <ul class="links">
+          <li><a href="https://airwaves-five.vercel.app" target="_blank" rel="noopener">Live demo <span>airwaves-five.vercel.app</span></a></li>
+          <li><a href="https://github.com/TabascoSlim/airwaves" target="_blank" rel="noopener">Code <span>github.com/TabascoSlim/airwaves</span></a></li>
+        </ul>
+        <h3>Contact</h3>
+        <ul class="links contact"></ul>
+      </section>
+    </article>
+
+    <article class="project" data-project="2" aria-label="Agent Arena">
+      <section class="zone" data-label="What it is">
+        <h2>Agent Arena</h2>
+        <p>Five AI personalities face off in classic games, trash-talking and holding grudges as they go. Pick two agents and a game, then watch them play, or jump in yourself for an exhibition match.</p>
+        <p>Each agent is a small low-poly 3D character, built entirely in code in the style of PS2 memory card icons, with its own neutral, winning and losing animations.</p>
+        <h3>Built with</h3>
+        <ul class="stack"><li>Next.js</li><li>React</li><li>TypeScript</li><li>Tailwind CSS</li><li>WebGL2</li><li>Claude API</li></ul>
+      </section>
+      <section class="zone" data-label="A closer look">
+        <h2>A closer look</h2>
+        <div class="shots">
+          <figure class="wide"><img src="media/agent-arena/agent-arena-match.gif" width="760" height="347" loading="lazy" decoding="async" alt="The Diva and The Analyst play tic-tac-toe as 3D characters; when the Diva wins, her box merges into the board and she strikes a pose"><figcaption>The Diva vs. The Analyst at tic-tac-toe, through to her winning pose</figcaption></figure>
+          <figure class="wide"><img src="media/agent-arena/agent-arena-lineup.jpg" width="1200" height="335" loading="lazy" decoding="async" alt="All five agents as low-poly 3D characters: The Analyst, The Chaos Agent, The Strategist, The Rookie and The Diva"><figcaption>The five agents, each built from code</figcaption></figure>
+          <figure><img src="media/agent-arena/agent-arena-setup.jpg" width="1200" height="548" loading="lazy" decoding="async" alt="Before a match: each agent stands in its own box, with the board between them"><figcaption>Ready to play</figcaption></figure>
+          <figure><img src="media/agent-arena/agent-arena-result.jpg" width="1200" height="548" loading="lazy" decoding="async" alt="Game over: the winner takes over the board with her winning animation, while the loser reacts in its own box"><figcaption>The winner takes the stage</figcaption></figure>
+        </div>
+        <p>Each agent remembers wins, losses and rivalries across its last 500 matches, and that history goes back into its prompts. With the Claude API, every turn sends the game state and the agent's personality to Claude; without a key, each personality runs its own scripted logic.</p>
+        <p>Every move is checked against the game's rules before it's played, and the public endpoint only accepts known agents and games, caps message sizes and limits each visitor to 60 requests a minute.</p>
+      </section>
+      <section class="zone" data-label="Links">
+        <h2>Try it</h2>
+        <ul class="links">
+          <li><a href="https://agent-arena-khaki.vercel.app" target="_blank" rel="noopener">Live demo <span>agent-arena-khaki.vercel.app</span></a></li>
+          <li><a href="https://github.com/TabascoSlim/agent-arena" target="_blank" rel="noopener">Code <span>github.com/TabascoSlim/agent-arena</span></a></li>
+        </ul>
+        <h3>Contact</h3>
+        <ul class="links contact"></ul>
+      </section>
+    </article>
+
+    <div class="ends">
+      <button class="to-surface" type="button" id="to-surface">Back to the surface</button>
+    </div>
+  </div>
+</div>
+
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="Screenshot">
+  <figure><img id="viewer-img" alt=""><p id="viewer-cap"></p></figure>
+</div>
+
+<template id="contact-links">
+  <li><a href="https://github.com/TabascoSlim" target="_blank" rel="noopener">GitHub <span>github.com/TabascoSlim</span></a></li>
+</template>
+
+<script>
+(() => {
+  // ================= Settings worth tuning =================
+  const PIXEL = 1.5;          // CSS pixels per rendered pixel (1 = sharpest, 3 = very chunky)
+  const TEXTURE_SIZE = 340;   // CSS pixels covered by one tile of the water texture
+  const CELL = 6;             // ripple simulation cell, in CSS pixels
+  const STEPS_PER_TICK = 2;   // wave speed
+  const DAMPING = 0.989;      // how quickly ripples fade (lower = calmer)
+  const WAKE = 0.07;          // ripple strength from moving the pointer
+  const SPLASH = 0.6;         // ripple strength from a click
+  const RIPPLE_RADIUS = 3.4;  // ripple width in cells (wider = softer)
+  // The letter boats
+  const THICKNESS = 0.38;     // how tall each letter is, as a share of the font size
+  const LEAN = 0.26;          // a slight lean (radians) so you can see the letters' sides from above
+  const ROCK = 0.09;          // idle rocking, in radians (about 5 degrees)
+  const ROCK_SPEED = 0.9;     // how fast the idle rocking is
+  const HEAVE = 2.5;          // idle rise and fall, in pixels
+  const WAVE_LIFT = 14;       // how much a passing ripple lifts a letter, in pixels
+  const WAVE_TILT = 0.9;      // how much a passing ripple tips a letter
+  const MAX_TIP = 0.16;       // never tip further than this (radians, about 9 degrees)
+  const DRIFT = 6;            // farthest a letter may drift from its spot, in pixels
+  // Hovering a name: its letters pop up one after another and bounce on springs (like an old fighting-game menu)
+  const POP_HEIGHT = 16;      // how high the letters hop, in pixels
+  const POP_STAGGER = 0.045;  // delay between one letter and the next, in seconds
+  const BOUNCE_SPRING = 230;  // stiffness of the bounce (higher = snappier)
+  const BOUNCE_DAMPING = 9;   // how quickly the bounce settles (lower = more wobble)
+  const HOVER_REACH = 28;     // how close (pixels) the pointer must come to a name to wake it up
+  const FONT = '"Avenir Next", "Segoe UI", system-ui, sans-serif';
+
+  const canvas = document.getElementById('water');
+  const hint = document.getElementById('hint');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const gl = canvas.getContext('webgl2', { antialias: false, alpha: false });
+  if (!gl) return; // the CSS gradient and the plain white words remain
+
+  // ================= Water shader (full screen, drawn first) =================
+  const VERT = `#version 300 es
+    in vec2 aPos; out vec2 vUv;
+    void main() { vUv = vec2(aPos.x * 0.5 + 0.5, 0.5 - aPos.y * 0.5); gl_Position = vec4(aPos, 0.0, 1.0); }`;
+  const FRAG = `#version 300 es
+    precision highp float;
+    uniform sampler2D uHeight;   // the simulated water height, one value per cell
+    uniform sampler2D uPattern;  // the pixel water texture (tiles)
+    uniform vec2 uGrid;          // grid size in cells
+    uniform vec2 uView;          // screen size in CSS pixels
+    uniform float uTile;         // CSS pixels per texture tile
+    uniform float uTime;
+    uniform float uZoom;         // < 1 while the camera is low over the water (things get bigger)
+    uniform vec2 uCam;           // the spot on the water the camera is over, 0..1 across the screen
+    uniform float uUnder;        // 0 = above the surface, 1 = underwater
+    uniform float uDepth;        // 0 just below the surface, 1 at the bottom of the page
+    uniform float uHaze;         // 0 at the homepage height, up to 1 high above the clouds
+    in vec2 vUv; out vec4 outColor;
+
+    // PlayStation colour: 15-bit, smoothed with an ordered dither
+    float bayer4(vec2 p) {
+      ivec2 i = ivec2(mod(p, 4.0));
+      int m[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+      return float(m[i.y * 4 + i.x]) / 16.0 - 0.5;
+    }
+
+    vec3 underwater(vec2 uv) {
+      // Looking down into open water: lighter near the edges, a dark abyss in the middle, faint light shafts
+      vec2 c = (uv - 0.5) * vec2(uView.x / uView.y, 1.0);
+      float r = length(c), ang = atan(c.y, c.x);
+      vec3 top = mix(vec3(0.07, 0.38, 0.68), vec3(0.03, 0.14, 0.34), uDepth);
+      vec3 bottom = mix(vec3(0.02, 0.15, 0.36), vec3(0.004, 0.03, 0.09), uDepth);
+      vec3 col = mix(bottom, top, smoothstep(0.0, 0.9, r));
+      float shafts = 0.5 + 0.5 * sin(ang * 7.0 + uTime * 0.12 + sin(ang * 3.0 - uTime * 0.07) * 1.5);
+      shafts *= 0.5 + 0.5 * sin(ang * 13.0 - uTime * 0.09);
+      col += vec3(0.30, 0.55, 0.75) * shafts * smoothstep(0.08, 0.8, r) * 0.13 * (1.0 - uDepth * 0.7);
+      // the surface's light pattern, faint, still flickering on things just below it
+      vec2 t = uv * uView / (uTile * 1.6) + uTime * vec2(0.02, 0.012);
+      col += vec3(0.25, 0.45, 0.6) * texture(uPattern, t).r * 0.10 * (1.0 - smoothstep(0.0, 0.35, uDepth));
+      return col;
+    }
+
+    void main() {
+      vec2 surfUv = uCam + (vUv - 0.5) * uZoom; // where this pixel lands on the water
+      vec2 texel = 1.0 / uGrid;
+      float h  = texture(uHeight, surfUv).r;
+      float hx = texture(uHeight, surfUv + vec2(texel.x, 0.0)).r - texture(uHeight, surfUv - vec2(texel.x, 0.0)).r;
+      float hy = texture(uHeight, surfUv + vec2(0.0, texel.y)).r - texture(uHeight, surfUv - vec2(0.0, texel.y)).r;
+      vec2 slope = vec2(hx, hy);
+
+      vec2 p = surfUv * uView; // position on the water in CSS pixels
+      // A slow swell that keeps the texture swaying, like N64 and PS1 water
+      vec2 swell = vec2(sin(p.y * 0.011 + uTime * 0.7) + 0.6 * sin((p.x + p.y) * 0.006 - uTime * 0.45),
+                        cos(p.x * 0.009 - uTime * 0.55) + 0.6 * sin((p.x - p.y) * 0.007 + uTime * 0.4)) * 7.0;
+      vec2 bend = slope * 90.0; // ripples bend the texture underneath them
+
+      // Two copies of the texture drift in different directions; where their bright lines cross, it sparkles
+      vec2 uvA = (p + swell + bend) / uTile + uTime * vec2(0.035, 0.018);
+      vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * p;
+      vec2 uvB = (q * 1.25 - swell + bend * 1.3) / uTile + uTime * vec2(-0.022, 0.03);
+      float a = texture(uPattern, uvA).r, b = texture(uPattern, uvB).r;
+      float lines = max(a, b) * 0.65 + a * b * 0.9;
+
+      vec3 deep    = vec3(0.04, 0.25, 0.55);
+      vec3 mid     = vec3(0.10, 0.48, 0.80);
+      vec3 bright  = vec3(0.62, 0.90, 1.00);
+      vec3 col = mix(deep, mid, 0.55 + 0.45 * (a + b) * 0.5);
+      col = mix(col, bright, smoothstep(0.4, 1.1, lines) * 0.55);
+      // Ripples: lit on one side, shaded on the other, a soft glint on top
+      float lit = dot(slope, normalize(vec2(-0.6, -0.8)));
+      col *= 1.0 + lit * 3.0;
+      col += vec3(0.85, 0.95, 1.0) * smoothstep(0.03, 0.09, lit) * 0.25;
+      col += h * 0.05;
+      // Darker toward the corners, as if deeper
+      col *= mix(0.78, 1.0, smoothstep(1.2, 0.3, length((vUv - 0.5) * vec2(1.0, 0.9)) * 1.6));
+
+      // Seen from high up, the sea fades into a pale blue haze
+      col = mix(col, vec3(0.62, 0.80, 0.95), uHaze * 0.7);
+
+      // Breaking through: a bright, churning flash, then open water
+      if (uUnder > 0.0) {
+        float churn = texture(uPattern, vUv * uView / 300.0 + uTime * vec2(0.12, -0.08)).r;
+        float flash = exp(-pow((uUnder - 0.35) / 0.2, 2.0));
+        col = mix(col, underwater(vUv), smoothstep(0.15, 0.75, uUnder));
+        col += vec3(0.55, 0.78, 0.95) * flash * (0.2 + 0.3 * churn);
+      }
+
+      col = clamp(col + bayer4(gl_FragCoord.xy) / 31.0, 0.0, 1.0);
+      outColor = vec4(floor(col * 31.0 + 0.5) / 31.0, 1.0);
+    }`;
+
+  // ================= Letter shaders =================
+  // PS1 tricks, kept gentle: vertices snap to a half-resolution grid (a slight wobble as they move),
+  // the letter face texture is mapped without perspective correction, and colours are dithered to 15 bits.
+  const PSX = `
+    float bayer4(vec2 p) {
+      ivec2 i = ivec2(mod(p, 4.0));
+      int m[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+      return float(m[i.y * 4 + i.x]) / 16.0 - 0.5;
+    }
+    vec3 psx(vec3 c) { c = clamp(c + bayer4(gl_FragCoord.xy) / 31.0, 0.0, 1.0); return floor(c * 31.0 + 0.5) / 31.0; }`;
+  const BOAT_VS = `#version 300 es
+    in vec3 aPos; in vec3 aNormal; in vec2 aUv;
+    uniform mat4 uProj, uModel; uniform vec2 uSnap;
+    out vec3 vNormal; out vec3 vAffine;
+    void main() {
+      vNormal = mat3(uModel) * aNormal;
+      vec4 p = uProj * uModel * vec4(aPos, 1.0);
+      p.xy = floor(p.xy / p.w * uSnap + 0.5) / uSnap * p.w;
+      vAffine = vec3(aUv * p.w, p.w);   // divided back out per pixel: affine texture mapping
+      gl_Position = p;
+    }`;
+  const BOAT_FS = `#version 300 es
+    precision highp float; ${PSX}
+    uniform sampler2D uGlyph; uniform int uPart; uniform float uGlow; uniform vec3 uLight;
+    in vec3 vNormal; in vec3 vAffine; out vec4 o;
+    void main() {
+      vec3 n = normalize(vNormal);
+      float lam = max(dot(n, uLight), 0.0);
+      if (uPart == 0) {          // the flat top of the letter
+        if (texture(uGlyph, vAffine.xy / vAffine.z).r < 0.5) discard;
+        vec3 c = vec3(1.0) * (0.86 + 0.16 * lam) + uGlow * vec3(0.0, 0.03, 0.06);
+        o = vec4(psx(c), 1.0);
+      } else if (uPart == 1) {   // the sides
+        vec3 base = vec3(0.70, 0.82, 0.93);
+        o = vec4(psx(base * (0.42 + 0.62 * lam)), 1.0);
+      } else {                   // its shadow on the water
+        if (texture(uGlyph, vAffine.xy / vAffine.z).r < 0.5) discard;
+        o = vec4(0.02, 0.10, 0.25, 0.32);
+      }
+    }`;
+
+  // Bubbles and specks: point sprites, positioned in JS (see "The deep" below)
+  const BUBBLE_VS = `#version 300 es
+    in vec4 aBubble; // x, y on screen in CSS px, size in canvas px, kind (0 bubble, 1 speck) * 2 + brightness
+    uniform vec2 uViewPx; uniform vec2 uSnap;
+    out float vKind; out float vBright;
+    void main() {
+      vec2 ndc = vec2(aBubble.x / uViewPx.x * 2.0 - 1.0, 1.0 - aBubble.y / uViewPx.y * 2.0);
+      ndc = floor(ndc * uSnap + 0.5) / uSnap;
+      gl_Position = vec4(ndc, 0.0, 1.0);
+      gl_PointSize = aBubble.z;
+      vKind = floor(aBubble.w / 2.0); vBright = mod(aBubble.w, 2.0);
+    }`;
+  const BUBBLE_FS = `#version 300 es
+    precision highp float; ${PSX}
+    in float vKind; in float vBright; out vec4 o;
+    void main() {
+      vec2 c = gl_PointCoord * 2.0 - 1.0;
+      float r = length(c);
+      if (r > 1.0) discard;
+      if (vKind > 0.5) { o = vec4(psx(vec3(0.7, 0.85, 0.95)), 0.35 * vBright); return; }
+      float rim = smoothstep(0.62, 0.95, r);                       // bright outline
+      float spot = smoothstep(0.42, 0.1, length(c - vec2(-0.35, -0.38))); // highlight, top left
+      vec3 col = vec3(0.75, 0.92, 1.0) * (0.25 + rim * 0.9) + spot * 0.9;
+      o = vec4(psx(col), (0.18 + rim * 0.65 + spot * 0.8) * vBright);
+    }`;
+
+  // Clouds: flat cut-outs at different heights above the water. PS1-style see-through: pixels are either
+  // fully drawn or skipped in a dither pattern, so they need no sorting.
+  const CLOUD_VS = `#version 300 es
+    in vec2 aCorner; uniform mat4 uProj; uniform vec4 uCloud; uniform vec2 uSnap; // x, y, height, size
+    out vec2 vUv; out float vDist;
+    void main() {
+      vUv = aCorner * 0.5 + 0.5;
+      vec4 p = uProj * vec4(uCloud.xy + aCorner * uCloud.w, uCloud.z, 1.0);
+      vDist = p.w;
+      if (p.w > 0.0) p.xy = floor(p.xy / p.w * uSnap + 0.5) / uSnap * p.w;
+      gl_Position = p;
+    }`;
+  const CLOUD_FS = `#version 300 es
+    precision highp float; ${PSX}
+    uniform sampler2D uPuff; uniform float uFade; uniform float uShade;
+    in vec2 vUv; in float vDist; out vec4 o;
+    void main() {
+      vec2 t = texture(uPuff, vUv).rg; // r: density, g: light
+      float a = t.r * uFade * smoothstep(300.0, 3200.0, vDist); // dissolve as the camera gets close, before the pixels get huge
+      if (a < bayer4(gl_FragCoord.xy) + 0.5) discard;
+      vec3 col = mix(vec3(0.66, 0.76, 0.88), vec3(1.0), t.g) * uShade;
+      o = vec4(psx(col), 1.0);
+    }`;
+
+  function compile(type, src) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function link(vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const u = {}; for (let i = 0, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS); i < n; i++) { const name = gl.getActiveUniform(p, i).name; u[name] = gl.getUniformLocation(p, name); }
+    return { p, u, a: (name) => gl.getAttribLocation(p, name) };
+  }
+  let waterProg, boatProg, bubbleProg, cloudProg;
+  try { waterProg = link(VERT, FRAG); boatProg = link(BOAT_VS, BOAT_FS); bubbleProg = link(BUBBLE_VS, BUBBLE_FS); cloudProg = link(CLOUD_VS, CLOUD_FS); }
+  catch (err) { console.error('Shaders failed, showing plain words instead:', err); canvas.remove(); return; }
+  document.documentElement.classList.add('webgl');
+
+  // ================= Water: textures and the ripple simulation =================
+  const quadVao = gl.createVertexArray(); gl.bindVertexArray(quadVao);
+  const quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(waterProg.a('aPos')); gl.vertexAttribPointer(waterProg.a('aPos'), 2, gl.FLOAT, false, 0, 0);
+  gl.useProgram(waterProg.p);
+  const U = { grid: waterProg.u.uGrid, view: waterProg.u.uView, time: waterProg.u.uTime, zoom: waterProg.u.uZoom, cam: waterProg.u.uCam, haze: waterProg.u.uHaze, under: waterProg.u.uUnder, depth: waterProg.u.uDepth };
+  gl.uniform1f(waterProg.u.uTile, TEXTURE_SIZE);
+  gl.uniform1i(waterProg.u.uHeight, 0);
+  gl.uniform1i(waterProg.u.uPattern, 1);
+  // ---- The water texture: a 64 x 64 tile of light lines, drawn once, shown with hard pixel edges ----
+  (function makePattern() {
+    const N = 64, pts = [];
+    let seed = 7; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 10; i++) pts.push([rand() * N, rand() * N]);
+    const data = new Uint8Array(N * N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      let f1 = 1e9, f2 = 1e9;
+      for (const [px, py] of pts) for (let ox = -N; ox <= N; ox += N) for (let oy = -N; oy <= N; oy += N) {
+        const d = Math.hypot(x + 0.5 - px - ox, y + 0.5 - py - oy);
+        if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) f2 = d;
+      }
+      // bright where two cells meet (the lines), with a little glow inside each cell
+      const edge = Math.max(0, 1 - (f2 - f1) / 5.5);
+      data[y * N + x] = Math.round(255 * Math.min(1, edge * edge + 0.12 * (f1 / 9)));
+    }
+    const t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, N, N, 0, gl.RED, gl.UNSIGNED_BYTE, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.activeTexture(gl.TEXTURE0);
+  })();
+  const heightTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, heightTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  let W = 0, H = 0, cur, prev, damp, viewW = 0, viewH = 0;
+  function step() {
+    for (let y = 1; y < H - 1; y++) { let i = y * W + 1; for (let x = 1; x < W - 1; x++, i++) prev[i] = ((cur[i - 1] + cur[i + 1] + cur[i - W] + cur[i + W]) * 0.5 - prev[i]) * damp[i]; }
+    const t = cur; cur = prev; prev = t;
+  }
+  function drop(px, py, amount, radius) { // press a soft dent into the water at a screen position
+    const cx = px / viewW * W, cy = py / viewH * H, r = Math.ceil(radius * 2.2);
+    for (let y = Math.max(1, Math.floor(cy - r)); y <= Math.min(H - 2, Math.ceil(cy + r)); y++)
+      for (let x = Math.max(1, Math.floor(cx - r)); x <= Math.min(W - 2, Math.ceil(cx + r)); x++)
+        cur[y * W + x] -= amount * Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (radius * radius));
+  }
+  function heightAt(px, py) {
+    const gx = Math.max(1, Math.min(W - 2.001, px / viewW * W)), gy = Math.max(1, Math.min(H - 2.001, py / viewH * H));
+    const x0 = Math.floor(gx), y0 = Math.floor(gy), fx = gx - x0, fy = gy - y0, i = y0 * W + x0;
+    return (cur[i] * (1 - fx) + cur[i + 1] * fx) * (1 - fy) + (cur[i + W] * (1 - fx) + cur[i + W + 1] * fx) * fy;
+  }
+
+  // ================= Building one 3D letter =================
+  // The letter is drawn big on a canvas. Its outline is traced (marching squares) and simplified into a
+  // low-poly wall; the top face uses the drawn letter as a cut-out texture, so curves stay smooth.
+  const GLYPH_PX = 112, GRID = 3;
+  const glyphCache = new Map();
+  function buildGlyph(ch) {
+    if (glyphCache.has(ch)) return glyphCache.get(ch);
+    const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+    const font = `700 ${GLYPH_PX}px ${FONT}`;
+    cx.font = font;
+    const m = cx.measureText(ch), pad = 8;
+    const left = Math.ceil(m.actualBoundingBoxLeft) + pad, ascent = Math.ceil(m.actualBoundingBoxAscent) + pad;
+    const w = left + Math.ceil(m.actualBoundingBoxRight) + pad, h = ascent + Math.ceil(m.actualBoundingBoxDescent) + pad;
+    cv.width = w; cv.height = h; cx.font = font; cx.fillStyle = '#fff'; cx.fillText(ch, left, ascent);
+    const img = cx.getImageData(0, 0, w, h).data, alpha = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) alpha[i] = img[i * 4 + 3];
+    const a = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? 0 : alpha[Math.round(y) * w + Math.round(x)] / 255;
+
+    // trace outlines on a coarse grid
+    const gw = Math.ceil(w / GRID) + 1, gh = Math.ceil(h / GRID) + 1;
+    const val = (i, j) => a(i * GRID, j * GRID);
+    const pts = new Map(), links = new Map();
+    const edgePoint = (key, x0, y0, x1, y1) => {
+      if (!pts.has(key)) { const v0 = a(x0, y0), v1 = a(x1, y1), t = Math.abs(v1 - v0) < 1e-6 ? 0.5 : Math.min(1, Math.max(0, (0.5 - v0) / (v1 - v0))); pts.set(key, [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t]); }
+      return key;
+    };
+    const link2 = (p, q) => { (links.get(p) || links.set(p, []).get(p)).push(q); (links.get(q) || links.set(q, []).get(q)).push(p); };
+    const CASES = [[], [[3, 2]], [[2, 1]], [[3, 1]], [[0, 1]], [[0, 1], [3, 2]], [[0, 2]], [[3, 0]], [[3, 0]], [[0, 2]], [[3, 0], [2, 1]], [[0, 1]], [[3, 1]], [[2, 1]], [[3, 2]], []];
+    for (let j = -1; j < gh; j++) for (let i = -1; i < gw; i++) {
+      const tl = val(i, j) >= 0.5, tr = val(i + 1, j) >= 0.5, br = val(i + 1, j + 1) >= 0.5, bl = val(i, j + 1) >= 0.5;
+      const c = (tl ? 8 : 0) | (tr ? 4 : 0) | (br ? 2 : 0) | (bl ? 1 : 0);
+      if (!CASES[c].length) continue;
+      const X = i * GRID, Y = j * GRID, G2 = GRID;
+      const e = [
+        () => edgePoint(`h${i},${j}`, X, Y, X + G2, Y),         // top
+        () => edgePoint(`v${i + 1},${j}`, X + G2, Y, X + G2, Y + G2), // right
+        () => edgePoint(`h${i},${j + 1}`, X, Y + G2, X + G2, Y + G2), // bottom
+        () => edgePoint(`v${i},${j}`, X, Y, X, Y + G2),         // left
+      ];
+      for (const [p, q] of CASES[c]) link2(e[p](), e[q]());
+    }
+    // chain the segments into closed loops, then simplify them
+    const seen = new Set(), loops = [];
+    for (const start of links.keys()) {
+      if (seen.has(start)) continue;
+      const loop = []; let prevK = null, k = start;
+      while (k && !seen.has(k)) { seen.add(k); loop.push(pts.get(k)); const nb = links.get(k); const next = nb[0] !== prevK ? nb[0] : nb[1]; prevK = k; k = next; }
+      if (loop.length > 2) loops.push(simplify(loop, 0.9));
+    }
+    // walls: one quad per outline segment, from the waterline (z = 0) to the top (z = 1, scaled later)
+    const pos = [], nor = [], uv = [];
+    const cxm = w / 2, cym = ascent - GLYPH_PX * 0.36; // centre the letter around the middle of its x-height
+    for (const loop of loops) for (let s = 0; s < loop.length; s++) {
+      const [x0, y0] = loop[s], [x1, y1] = loop[(s + 1) % loop.length];
+      let nx = y1 - y0, ny = -(x1 - x0); const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+      if (a((x0 + x1) / 2 + nx * 2, (y0 + y1) / 2 + ny * 2) > 0.5) { nx = -nx; ny = -ny; } // point outwards
+      const A = [x0 - cxm, y0 - cym], B = [x1 - cxm, y1 - cym];
+      for (const [p, z] of [[A, 0], [B, 0], [B, 1], [A, 0], [B, 1], [A, 1]]) { pos.push(p[0], p[1], z); nor.push(nx, ny, 0); uv.push(0, 0); }
+    }
+    const wallCount = pos.length / 3;
+    // top face: one quad with the letter as its cut-out texture
+    const x0 = -cxm, y0 = -cym, x1 = w - cxm, y1 = h - cym;
+    for (const [x, y, u, v] of [[x0, y0, 0, 0], [x1, y0, 1, 0], [x1, y1, 1, 1], [x0, y0, 0, 0], [x1, y1, 1, 1], [x0, y1, 0, 1]]) { pos.push(x, y, 1); nor.push(0, 0, 1); uv.push(u, v); }
+
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const put = (data, name, size) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW); gl.enableVertexAttribArray(boatProg.a(name)); gl.vertexAttribPointer(boatProg.a(name), size, gl.FLOAT, false, 0, 0); };
+    put(pos, 'aPos', 3); put(nor, 'aNormal', 3); put(uv, 'aUv', 2);
+    const tex = gl.createTexture(); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, alpha);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.activeTexture(gl.TEXTURE0);
+    const g = { vao, tex, wallCount, topStart: wallCount, centreX: cxm, centreY: cym, width: w - pad * 2 };
+    glyphCache.set(ch, g);
+    return g;
+  }
+  function simplify(points, eps) { // Ramer-Douglas-Peucker on a closed loop
+    if (points.length < 8) return points;
+    let far = 0, fd = 0; for (let i = 1; i < points.length; i++) { const d = Math.hypot(points[i][0] - points[0][0], points[i][1] - points[0][1]); if (d > fd) { fd = d; far = i; } }
+    const rdp = (pts) => {
+      const [ax, ay] = pts[0], [bx, by] = pts[pts.length - 1], L = Math.hypot(bx - ax, by - ay) || 1;
+      let idx = 0, dmax = 0;
+      for (let i = 1; i < pts.length - 1; i++) { const d = Math.abs((bx - ax) * (ay - pts[i][1]) - (ax - pts[i][0]) * (by - ay)) / L; if (d > dmax) { dmax = d; idx = i; } }
+      if (dmax <= eps) return [pts[0], pts[pts.length - 1]];
+      const l = rdp(pts.slice(0, idx + 1)), r = rdp(pts.slice(idx)); return l.slice(0, -1).concat(r);
+    };
+    const a = rdp(points.slice(0, far + 1)), b = rdp(points.slice(far).concat([points[0]]));
+    return a.slice(0, -1).concat(b.slice(0, -1));
+  }
+
+  // ================= The letter boats =================
+  const buttons = [...document.querySelectorAll('.float')];
+  let boats = [];
+  function layoutBoats() {
+    const old = boats; boats = [];
+    buttons.forEach((button, wi) => {
+      const word = button.querySelector('.word'), text = word.textContent;
+      const size = parseFloat(getComputedStyle(word).fontSize), scale = size / GLYPH_PX;
+      const node = word.firstChild, range = document.createRange();
+      [...text].forEach((ch, li) => {
+        if (ch === ' ') return;
+        range.setStart(node, li); range.setEnd(node, li + 1);
+        const r = range.getBoundingClientRect(), spacing = size * 0.06;
+        const prevBoat = old.find((b) => b.word === wi && b.index === li);
+        boats.push(Object.assign(prevBoat || { ox: 0, oy: 0, vx: 0, vy: 0, z: 0, roll: 0, pitch: 0, yaw: 0, glow: 0, nextWake: Math.random() * 2,
+          pop: 0, popV: 0, jig: 0, jigV: 0, spin: 0, spinV: 0, kickIn: 0 }, {
+          word: wi, index: li, glyph: buildGlyph(ch), scale, size, button,
+          homeX: r.left + (r.width - spacing) / 2, homeY: r.top + r.height * 0.5 + size * 0.12,
+          halfW: Math.max(size * 0.18, (r.width - spacing) / 2), phase: wi * 2.3 + li * 0.55,
+        }));
+      });
+    });
+  }
+
+  // which names are "awake": the pointer is near one, or it has keyboard focus
+  let pointerX = -1e4, pointerY = -1e4;
+  addEventListener('pointermove', (e) => { pointerX = e.clientX; pointerY = e.clientY; }, { passive: true });
+  document.addEventListener('pointerleave', () => { pointerX = pointerY = -1e4; });
+  const awake = buttons.map(() => false);
+  function wakeNames() {
+    buttons.forEach((button, wi) => {
+      const r = button.querySelector('.word').getBoundingClientRect(), reach = HOVER_REACH;
+      const near = chosen < 0 && !introOn && (button.matches(':focus-visible') ||
+        (pointerX > r.left - reach && pointerX < r.right + reach && pointerY > r.top - reach && pointerY < r.bottom + reach + 20));
+      if (near && !awake[wi]) { // just woke: kick each letter, one after another, and splash the water
+        let k = 0;
+        for (const b of boats) if (b.word === wi) b.kickIn = 0.0001 + POP_STAGGER * k++;
+        if (!reduceMotion) drop(r.left + r.width / 2, r.top + r.height / 2, 0.14, RIPPLE_RADIUS * 1.6);
+      }
+      awake[wi] = near;
+    });
+  }
+
+  function moveBoats(dt, time) {
+    wakeNames();
+    for (const b of boats) {
+      // the bounce: a springy hop that keeps going while the name is awake and wobbles down after
+      const on = awake[b.word];
+      if (b.kickIn > 0) { b.kickIn -= dt; if (b.kickIn <= 0) { b.popV += 300 + Math.random() * 80; b.jigV += (Math.random() - 0.5) * 9; b.spinV += (Math.random() - 0.5) * 5; } }
+      const popTarget = on ? POP_HEIGHT * (0.45 + 0.55 * Math.abs(Math.sin(time * 5.2 - b.index * 0.55))) : 0;
+      b.popV += (-BOUNCE_SPRING * (b.pop - popTarget) - BOUNCE_DAMPING * b.popV) * dt; b.pop += b.popV * dt;
+      if (on && Math.random() < dt * 1.6) b.jigV += (Math.random() - 0.5) * 4; // a little jiggle now and then
+      b.jigV += (-BOUNCE_SPRING * b.jig - BOUNCE_DAMPING * 0.8 * b.jigV) * dt; b.jig += b.jigV * dt;
+      b.spinV += (-BOUNCE_SPRING * b.spin - BOUNCE_DAMPING * 0.8 * b.spinV) * dt; b.spin += b.spinV * dt;
+      const x = b.homeX + b.ox, y = b.homeY + b.oy, rx = b.halfW, ry = b.size * 0.3;
+      const hL = heightAt(x - rx, y), hR = heightAt(x + rx, y), hU = heightAt(x, y - ry), hD = heightAt(x, y + ry), h = heightAt(x, y);
+      // a ripple's slope nudges the boat sideways; a soft mooring line pulls it back
+      b.vx += (-(hR - hL) * 900 - 26 * b.ox - 9 * b.vx) * dt;
+      b.vy += (-(hD - hU) * 900 - 26 * b.oy - 9 * b.vy) * dt;
+      b.ox += b.vx * dt; b.oy += b.vy * dt;
+      const far = Math.hypot(b.ox, b.oy); if (far > DRIFT) { b.ox *= DRIFT / far; b.oy *= DRIFT / far; }
+      // idle rocking travels along each word, so the letters rock one after another
+      const t = time * ROCK_SPEED + b.phase;
+      const hover = awake[b.word] ? 1 : 0;
+      const tz = -h * WAVE_LIFT + Math.sin(t * 1.3) * HEAVE;
+      const tRoll = clamp((hR - hL) * WAVE_TILT * 30 / rx + Math.sin(t) * ROCK, MAX_TIP);
+      const tPitch = clamp((hD - hU) * WAVE_TILT * 30 / ry + Math.sin(t * 0.8 + 1.7) * ROCK * 0.7, MAX_TIP);
+      const tYaw = clamp(Math.sin(t * 0.5 + 0.6) * 0.03 + b.vx * 0.004, 0.08);
+      const ease = 1 - Math.exp(-dt * 4);
+      b.z += (tz - b.z) * ease; b.roll += (tRoll - b.roll) * ease; b.pitch += (tPitch - b.pitch) * ease; b.yaw += (tYaw - b.yaw) * ease;
+      b.glow += (hover - b.glow) * (1 - Math.exp(-dt * 10));
+      // each boat leaves a faint ring now and then as it rocks
+      b.nextWake -= dt;
+      if (b.nextWake <= 0) { drop(x, y, 0.025, RIPPLE_RADIUS * 0.9); b.nextWake = 1.6 + Math.random() * 1.6; }
+    }
+  }
+  const clamp = (v, m) => Math.max(-m, Math.min(m, v));
+
+  // ================= Camera: straight down =================
+  // At the overview the camera is high and centred, so the water lines up with the page pixel for pixel.
+  // Picking a project glides it over that name and a little lower; scrolling then sinks it through the surface.
+  const CAM = 1500;          // camera height (CSS pixels) at the overview
+  const FOCUS_HEIGHT = 0.6;  // how low the camera hovers over a chosen project (share of CAM; lower = closer)
+  let proj, camHeight = CAM, camX = 0, camY = 0;
+  let hoverX = 0, hoverY = 0, hoverH = CAM; // where the camera is gliding to (before any dive)
+  function makeProjection() {
+    const h = camHeight, n = Math.max(4, h - 400), f = h + 100, A = (f + n) / (f - n), B = -2 * f * n / (f - n);
+    const kx = 2 * CAM / viewW, ky = 2 * CAM / viewH;
+    // clip.x = (x - camX) * kx, clip.y = -(y - camY) * ky, clip.w = h - z
+    proj = new Float32Array([kx, 0, 0, 0, 0, -ky, 0, 0, 0, 0, -A, -1, -camX * kx, camY * ky, A * h + B, h]);
+  }
+  // screen position -> spot on the water (they differ while the camera is lowered or panned)
+  const toWater = (sx, sy) => { const z = camHeight / CAM; return [camX + (sx - viewW / 2) * z, camY + (sy - viewH / 2) * z]; };
+
+  // ================= Cloud intro =================
+  // The page opens high above the clouds. "Enter" (or any key, or a click) drops the camera through them
+  // and settles it over the homepage.
+  const INTRO_HEIGHT = 16;    // starting height, in homepage heights (CAM)
+  const INTRO_SECONDS = 3.2;  // how long the fall takes
+  let introOn = false, introFall = -1, introH = CAM, haze = 0;
+  const clouds = [];
+  (function makeClouds() {
+    let seed = 11; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 46; i++) {
+      const layer = i % 3; // three layers, from high to low
+      clouds.push({
+        x: (rand() - 0.5) * 9000 * (1 + layer * 0.3), y: (rand() - 0.5) * 6000 * (1 + layer * 0.3),
+        z: [17000, 11000, 6500][layer] + (rand() - 0.5) * 1800,
+        size: 900 + rand() * 1600 + layer * 300, shade: 0.9 + rand() * 0.1, drift: 8 + rand() * 10,
+      });
+    }
+  })();
+  // a soft puffy cut-out (density in red, light in green), drawn once
+  const puffTex = (() => {
+    const N = 64, data = new Uint8Array(N * N * 2);
+    let seed = 3; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const blobs = Array.from({ length: 9 }, () => [0.5 + (rand() - 0.5) * 0.5, 0.5 + (rand() - 0.5) * 0.4, 0.14 + rand() * 0.14]);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const u = (x + 0.5) / N, v = (y + 0.5) / N; let d = 0, lit = 0;
+      for (const [bx, by, br] of blobs) { const k = Math.max(0, 1 - Math.hypot(u - bx, v - by) / br); d += k * k; lit += Math.max(0, 1 - Math.hypot(u - bx + 0.05, v - by + 0.06) / br) ** 2; }
+      data[(y * N + x) * 2] = Math.round(255 * Math.min(1, d * 1.6));
+      data[(y * N + x) * 2 + 1] = Math.round(255 * Math.min(1, lit * 1.3 / Math.max(d, 0.001) * 0.6));
+    }
+    const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, N, N, 0, gl.RG, gl.UNSIGNED_BYTE, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.activeTexture(gl.TEXTURE0);
+    return t;
+  })();
+  const cloudVao = gl.createVertexArray(); gl.bindVertexArray(cloudVao);
+  const cloudBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, cloudBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(cloudProg.a('aCorner')); gl.vertexAttribPointer(cloudProg.a('aCorner'), 2, gl.FLOAT, false, 0, 0);
+  function cloudProjection() { // same camera, but with room for things high above the water
+    const h = camHeight, n = 1, f = h + 200, A = (f + n) / (f - n), B = -2 * f * n / (f - n), kx = 2 * CAM / viewW, ky = 2 * CAM / viewH;
+    return new Float32Array([kx, 0, 0, 0, 0, -ky, 0, 0, 0, 0, -A, -1, -camX * kx, camY * ky, A * h + B, h]);
+  }
+  function drawClouds() {
+    if (camHeight < CAM * 1.6) return;
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(cloudProg.p); gl.bindVertexArray(cloudVao);
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, puffTex); gl.uniform1i(cloudProg.u.uPuff, 3);
+    gl.uniformMatrix4fv(cloudProg.u.uProj, false, cloudProjection());
+    gl.uniform2f(cloudProg.u.uSnap, canvas.width / 4, canvas.height / 4);
+    const t = performance.now() / 1000;
+    for (const c of [...clouds].sort((a, b) => a.z - b.z)) { // lowest first, so higher clouds cover them
+      if (c.z > camHeight - 15) continue;
+      gl.uniform4f(cloudProg.u.uCloud, c.x + viewW / 2 + t * c.drift, c.y + viewH / 2, c.z, c.size);
+      gl.uniform1f(cloudProg.u.uFade, 1.0);
+      gl.uniform1f(cloudProg.u.uShade, c.shade - Math.max(0, (17000 - c.z) / 17000) * 0.12);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  const introBox = document.getElementById('intro');
+  // The clouds play once per visit (browser session); add ?intro to the address to see them again
+  const INTRO_KEY = 'portfolio-intro-seen';
+  const seenIntro = () => { try { return sessionStorage.getItem(INTRO_KEY) === '1'; } catch { return false; } };
+  const rememberIntro = () => { try { sessionStorage.setItem(INTRO_KEY, '1'); } catch { /* storage blocked: it just plays again */ } };
+  function startIntro() {
+    if (reduceMotion) return; // no fall for people who asked for less motion
+    if (seenIntro() && !new URLSearchParams(location.search).has('intro')) return;
+    introOn = true; introFall = -1; introH = CAM * INTRO_HEIGHT;
+    root.classList.add('in-intro'); introBox.hidden = false;
+    document.getElementById('enter').focus({ preventScroll: true });
+  }
+  function enter() {
+    if (!introOn || introFall >= 0) return;
+    introFall = 0; introBox.classList.add('leaving'); rememberIntro();
+  }
+  document.getElementById('enter').addEventListener('click', enter);
+  addEventListener('keydown', (e) => { if (introOn && !['Tab', 'Shift'].includes(e.key)) enter(); });
+  introBox.addEventListener('pointerdown', (e) => { if (e.target === introBox) enter(); });
+  function updateIntro(dt) {
+    if (!introOn) { haze = 0; return; }
+    if (introFall >= 0) {
+      introFall = Math.min(1, introFall + dt / INTRO_SECONDS);
+      const e = introFall < 0.5 ? 2 * introFall * introFall : 1 - Math.pow(-2 * introFall + 2, 2) / 2; // ease in and out
+      introH = CAM * Math.pow(INTRO_HEIGHT, 1 - e); // falls at an even pace through the scale of things
+      if (introFall >= 1) {
+        introOn = false; introH = CAM; introBox.hidden = true;
+        root.classList.remove('in-intro');
+        buttons[0].focus({ preventScroll: true }); buttons[0].blur(); // reset focus to the page, without a ring
+      }
+    }
+    hoverH = glide = introH;
+    haze = Math.min(1, Math.log(introH / CAM) / Math.log(INTRO_HEIGHT * 0.5));
+  }
+
+  // ================= Choosing a project, and the dive =================
+  const SINK = 0.9; // screens of scrolling it takes to pass through the surface
+  const root = document.documentElement, diveBox = document.getElementById('dive');
+  const articles = [...document.querySelectorAll('.project')];
+  let pull = 0; // see "pulls you back out" below
+  let lift = 0, ascent = null; // see "Back to the surface" below
+  let chosen = -1, scrollNow = 0, dive = 0, under = 0, depth = 0, scrollSpeed = 0, glide = 0;
+
+  function openProject(i) {
+    chosen = i;
+    const b = buttons[i].querySelector('.word').getBoundingClientRect();
+    hoverX = b.left + b.width / 2; hoverY = b.top + b.height / 2 + 10; hoverH = CAM * FOCUS_HEIGHT;
+    articles.forEach((a, k) => a.classList.toggle('open', k === i));
+    diveBox.hidden = false;
+    scrollTo({ top: 0, behavior: 'instant' }); scrollNow = 0;
+    root.classList.add('focused');
+    hint.textContent = PROJECT_HINT(i);
+    hint.classList.add('focus-only-top');
+    buildGauge(); reading.textContent = lastReading = 'Surface';
+    document.getElementById('back').focus({ preventScroll: true });
+  }
+  const PROJECT_HINT = (i) => `${buttons[i].dataset.name}. Scroll down to dive in, or up to see all projects.`;
+  function closeProject() {
+    if (chosen < 0) return;
+    const was = chosen;
+    chosen = -1;
+    hoverX = viewW / 2; hoverY = viewH / 2; hoverH = CAM;
+    diveBox.hidden = true; articles.forEach((a) => a.classList.remove('open'));
+    scrollTo({ top: 0, behavior: 'instant' }); scrollNow = 0;
+    root.classList.remove('focused', 'dived', 'deep');
+    hint.textContent = 'Move across the water. Pick a project to dive in.';
+    hint.classList.remove('focus-only-top');
+    buttons[was].focus({ preventScroll: true });
+  }
+
+  function updateDive(dt) {
+    // the camera glides toward its spot (smoothly, no overshoot)
+    const g = reduceMotion ? 1 : 1 - Math.exp(-dt * 3.2);
+    // pulling up past the surface lifts the camera part of the way back out, as a preview of leaving
+    const out = Math.max(pull * 0.5, lift), outH = Math.max(pull * 0.6, lift); // lift: the ride back to all projects
+    const tx = hoverX + (viewW / 2 - hoverX) * out, ty = hoverY + (viewH / 2 - hoverY) * out;
+    const th = hoverH + (CAM - hoverH) * outH;
+    const gp = reduceMotion ? 1 : 1 - Math.exp(-dt * 6);
+    const follow = ascent ? 1 : pull > 0 ? gp : g; // during the ride back the camera follows the path exactly
+    camX += (tx - camX) * follow; camY += (ty - camY) * follow;
+    glide += (th - glide) * follow;
+    // scrolling sinks it, starting from wherever it is hovering
+    const before = scrollNow;
+    scrollNow += (scrollY - scrollNow) * (reduceMotion || ascent ? 1 : 1 - Math.exp(-dt * 7));
+    scrollSpeed = dt > 0 ? (scrollNow - before) / dt : 0;
+    const sink = chosen < 0 ? 0 : Math.min(1, Math.max(0, scrollNow / (innerHeight * SINK)));
+    dive = sink;
+    camHeight = glide * (1 - 0.95 * Math.pow(Math.min(1, sink / 0.75), 2.2));
+    under = Math.min(1, Math.max(0, (sink - 0.6) / 0.4));
+    const maxScroll = Math.max(1, root.scrollHeight - innerHeight - innerHeight * SINK);
+    depth = Math.min(1, Math.max(0, (scrollNow - innerHeight * SINK) / maxScroll));
+    root.classList.toggle('dived', sink > 0.25);
+    makeProjection();
+  }
+
+  // ================= The deep: bubbles rising toward you and specks drifting past =================
+  // Each one has a spot (x, y) and a depth below the surface. You look straight down, so things below
+  // you get bigger as they rise toward you, and scrolling down brings you down toward them.
+  const FOCAL = 520, NEAR = 40, FAR = 1400, BUBBLES = 60, SPECKS = 160;
+  const BUBBLES_FROM = 5;    // bubbles start to appear at this depth on the gauge (metres), fully in by 2 m later
+  const metresAt = (scroll) => Math.max(0, scroll - innerHeight * SINK * 0.6) / innerHeight * 12;
+  const VENTS = Array.from({ length: 6 }, () => [Math.random(), Math.random()]);
+  const things = [];
+  function seed(t, fresh) {
+    const [vx, vy] = VENTS[Math.floor(Math.random() * VENTS.length)];
+    const fromVent = t.kind === 0 && Math.random() < 0.7;
+    t.x = fromVent ? vx + (Math.random() - 0.5) * 0.12 : Math.random();
+    t.y = fromVent ? vy + (Math.random() - 0.5) * 0.12 : Math.random();
+    t.d = fresh ? NEAR + Math.random() * (FAR - NEAR) : FAR - Math.random() * 120; // distance below the camera
+    t.wob = Math.random() * 6.28;
+  }
+  for (let i = 0; i < BUBBLES + SPECKS; i++) {
+    const t = { kind: i < BUBBLES ? 0 : 1, size: i < BUBBLES ? 4 + Math.random() * 8 : 1.4 + Math.random() * 1.6, rise: i < BUBBLES ? 50 + Math.random() * 70 : 4 + Math.random() * 6 };
+    seed(t, true); things.push(t);
+  }
+  const bubbleData = new Float32Array(things.length * 4);
+  const bubbleVao = gl.createVertexArray(); gl.bindVertexArray(bubbleVao);
+  const bubbleBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bubbleBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, bubbleData.byteLength, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(bubbleProg.a('aBubble')); gl.vertexAttribPointer(bubbleProg.a('aBubble'), 4, gl.FLOAT, false, 0, 0);
+  function moveThings(dt, time) {
+    const fall = scrollSpeed * 0.9 * under; // sinking (scrolling down) brings you closer to everything below
+    const bubblesIn = Math.min(1, Math.max(0, (metresAt(scrollNow) - BUBBLES_FROM) / 2));
+    const scale = Math.max(viewW, viewH);
+    let k = 0;
+    for (const t of things) {
+      t.d -= (t.rise * (reduceMotion ? 0 : 1)) * dt + fall * dt;
+      if (t.d < NEAR) seed(t, false);
+      if (t.d > FAR) { seed(t, false); t.d = NEAR + 10 + Math.random() * 80; }
+      const f = FOCAL / t.d;
+      const wx = (t.x - 0.5) * scale * 1.6 + (t.kind === 0 ? Math.sin(time * 2 + t.wob) * 6 : 0);
+      const wy = (t.y - 0.5) * scale * 1.6;
+      const fadeIn = Math.min(1, (FAR - t.d) / 300), fadeOut = Math.min(1, (t.d - NEAR) / 60);
+      bubbleData[k++] = viewW / 2 + wx * f;
+      bubbleData[k++] = viewH / 2 + wy * f;
+      bubbleData[k++] = Math.min(220, t.size * f * 3 / PIXEL);
+      bubbleData[k++] = t.kind * 2 + Math.max(0, Math.min(0.999, fadeIn * fadeOut * (t.kind === 0 ? bubblesIn : under)));
+    }
+  }
+  function modelMatrix(b, flat) {
+    // translate * yaw (z) * lean+pitch (x) * roll (y) * scale; for the shadow, everything is squashed onto the water
+    const grow = 1 + Math.max(0, b.pop) * 0.012;              // a hopping letter grows a little (it's closer to you)
+    const s = b.scale * grow, th = b.size * THICKNESS * grow; // th: thickness in pixels
+    const yaw = b.yaw + b.spin * 0.6, roll = b.roll + b.jig * 0.5;
+    const cz = Math.cos(yaw), sz = Math.sin(yaw);
+    const px = LEAN + b.pitch, cx = Math.cos(px), sx = Math.sin(px);
+    const cy = Math.cos(roll), sy = Math.sin(roll);
+    // R = Rz * Rx * Ry
+    const r00 = cz * cy - sz * sx * sy, r01 = -sz * cx, r02 = cz * sy + sz * sx * cy;
+    const r10 = sz * cy + cz * sx * sy, r11 = cz * cx, r12 = sz * sy - cz * sx * cy;
+    const r20 = -cx * sy, r21 = sx, r22 = cx * cy;
+    const x = b.homeX + b.ox, y = b.homeY + b.oy;
+    if (flat) { // shadow: drop onto the water, offset away from the light, further when the letter rides higher
+      const off = 1 + Math.max(0, b.z + b.pop) / 20;
+      return new Float32Array([r00 * s, r10 * s, 0, 0, r01 * s, r11 * s, 0, 0, 0, 0, 0, 0, x + 8 * off, y + 11 * off, -1, 1]);
+    }
+    return new Float32Array([r00 * s, r10 * s, r20 * s, 0, r01 * s, r11 * s, r21 * s, 0, r02 * th, r12 * th, r22 * th, 0, x, y, b.z + b.pop - th * 0.35, 1]);
+  }
+
+  // ================= Drawing =================
+  const LIGHT = (() => { const v = [-0.45, -0.6, 0.66], l = Math.hypot(...v); return v.map((c) => c / l); })();
+  function render(time) {
+    gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+    gl.useProgram(waterProg.p); gl.bindVertexArray(quadVao);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, heightTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, H, gl.RED, gl.FLOAT, cur);
+    gl.uniform1f(U.time, time);
+    gl.uniform1f(U.zoom, camHeight / CAM); gl.uniform2f(U.cam, camX / viewW, camY / viewH); gl.uniform1f(U.under, under); gl.uniform1f(U.depth, depth); gl.uniform1f(U.haze, haze);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    if (under >= 1) { drawDeep(); return; }
+    gl.useProgram(boatProg.p);
+    gl.uniformMatrix4fv(boatProg.u.uProj, false, proj);
+    gl.uniform2f(boatProg.u.uSnap, canvas.width / 4, canvas.height / 4);
+    gl.uniform3f(boatProg.u.uLight, ...LIGHT);
+    gl.uniform1i(boatProg.u.uGlyph, 2);
+    gl.activeTexture(gl.TEXTURE2);
+    // shadows first, blended onto the water
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniform1i(boatProg.u.uPart, 2);
+    for (const b of boats) {
+      gl.bindVertexArray(b.glyph.vao); gl.bindTexture(gl.TEXTURE_2D, b.glyph.tex);
+      gl.uniformMatrix4fv(boatProg.u.uModel, false, modelMatrix(b, true));
+      gl.drawArrays(gl.TRIANGLES, b.glyph.topStart, 6);
+    }
+    gl.disable(gl.BLEND);
+    gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+    for (const b of boats) {
+      gl.bindVertexArray(b.glyph.vao); gl.bindTexture(gl.TEXTURE_2D, b.glyph.tex);
+      gl.uniformMatrix4fv(boatProg.u.uModel, false, modelMatrix(b, false));
+      gl.uniform1f(boatProg.u.uGlow, b.glow);
+      gl.uniform1i(boatProg.u.uPart, 1); gl.drawArrays(gl.TRIANGLES, 0, b.glyph.wallCount);
+      gl.uniform1i(boatProg.u.uPart, 0); gl.drawArrays(gl.TRIANGLES, b.glyph.topStart, 6);
+    }
+    gl.activeTexture(gl.TEXTURE0);
+
+    drawClouds();
+    drawDeep();
+  }
+  function drawDeep() {
+    if (under > 0) {
+      gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.useProgram(bubbleProg.p); gl.bindVertexArray(bubbleVao);
+      gl.uniform2f(bubbleProg.u.uViewPx, viewW, viewH); gl.uniform2f(bubbleProg.u.uSnap, canvas.width / 4, canvas.height / 4);
+      gl.bindBuffer(gl.ARRAY_BUFFER, bubbleBuf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, bubbleData);
+      gl.drawArrays(gl.POINTS, 0, things.length);
+      gl.disable(gl.BLEND);
+    }
+  }
+
+  function resize() {
+    viewW = innerWidth; viewH = innerHeight;
+    canvas.width = Math.ceil(viewW / PIXEL); canvas.height = Math.ceil(viewH / PIXEL);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    W = Math.max(64, Math.min(320, Math.round(viewW / CELL))); H = Math.max(48, Math.min(220, Math.round(viewH / CELL)));
+    cur = new Float32Array(W * H); prev = new Float32Array(W * H); damp = new Float32Array(W * H);
+    const margin = 10;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const d = Math.min(x, y, W - 1 - x, H - 1 - y); damp[y * W + x] = DAMPING - (d < margin ? 0.09 * (1 - d / margin) ** 2 : 0); }
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, heightTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, W, H, 0, gl.RED, gl.FLOAT, cur);
+    gl.useProgram(waterProg.p); gl.uniform2f(U.grid, W, H); gl.uniform2f(U.view, viewW, viewH);
+    if (chosen < 0) { hoverX = camX = viewW / 2; hoverY = camY = viewH / 2; hoverH = glide = CAM; }
+    layoutBoats();
+    if (chosen >= 0) { const b = buttons[chosen].querySelector('.word').getBoundingClientRect(); hoverX = b.left + b.width / 2; hoverY = b.top + b.height / 2 + 10; }
+    makeProjection();
+  }
+
+  // ================= Input =================
+  let lastX = null, lastY = null;
+  addEventListener('pointermove', (e) => {
+    if (reduceMotion || dive > 0.25 || introOn) return;
+    if (lastX === null) { lastX = e.clientX; lastY = e.clientY; return; }
+    const dx = e.clientX - lastX, dy = e.clientY - lastY, dist = Math.hypot(dx, dy);
+    if (dist < 2) return;
+    const strength = WAKE * Math.min(1.6, 0.35 + dist / 28), n = Math.min(12, Math.ceil(dist / 9));
+    for (let i = 1; i <= n; i++) { const [wx, wy] = toWater(lastX + dx * i / n, lastY + dy * i / n); drop(wx, wy, strength / Math.sqrt(n), RIPPLE_RADIUS); }
+    lastX = e.clientX; lastY = e.clientY;
+  }, { passive: true });
+  addEventListener('pointerleave', () => { lastX = lastY = null; });
+  addEventListener('pointerdown', (e) => {
+    lastX = e.clientX; lastY = e.clientY;
+    if (!reduceMotion && dive < 0.25 && !e.target.closest('a, button.back, .depths')) { const [wx, wy] = toWater(e.clientX, e.clientY); drop(wx, wy, SPLASH, RIPPLE_RADIUS * 1.5); }
+  }, { passive: true });
+  buttons.forEach((button, i) => {
+    button.addEventListener('click', () => {
+      const r = button.querySelector('.word').getBoundingClientRect();
+      if (!reduceMotion) drop(r.left + r.width / 2, r.top + r.height / 2 + 30, SPLASH * 0.8, RIPPLE_RADIUS * 1.8);
+      openProject(i);
+    });
+  });
+  // "Back to the surface": one continuous ride. The page rises to the top while the camera, already on its
+  // way, lifts out to all projects, so there's no stop in between.
+  const RIDE_SECONDS = 1.1;  // the shortest ride (from just under the surface); deeper rides take a bit longer
+  function backToSurface() {
+    if (chosen < 0 || ascent) return;
+    if (reduceMotion) { scrollTo({ top: 0, behavior: 'instant' }); closeProject(); return; }
+    const from = scrollY;
+    ascent = { t: 0, from, pullFrom: pull, dur: RIDE_SECONDS + Math.min(1.3, from / innerHeight * 0.3) };
+  }
+  function rideUp(dt) {
+    if (!ascent) return;
+    const a = ascent;
+    a.t = Math.min(1, a.t + dt / a.dur);
+    const smooth = (x) => x * x * x * (x * (6 * x - 15) + 10); // starts and ends gently, no jolt in the middle
+    // the scroll covers the first 75% of the ride; the lift fades in from 35%, so the two overlap
+    const sPart = a.from > 0 ? smooth(Math.min(1, a.t / 0.75)) : 1;
+    scrollTo({ top: Math.round(a.from * (1 - sPart)), behavior: 'instant' });
+    const liftStart = a.from > 0 ? 0.35 : 0;
+    lift = Math.max(a.pullFrom * 0.55, smooth(Math.max(0, (a.t - liftStart) / (1 - liftStart))));
+    pull = 0;
+    if (a.t >= 1) { ascent = null; lift = 0; closeProject(); }
+  }
+  document.getElementById('back').addEventListener('click', backToSurface);
+  document.getElementById('to-surface').addEventListener('click', backToSurface);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') backToSurface(); });
+
+  // Scrolling up past the top of a project (wheel, trackpad, touch or keys) pulls you back out to all projects.
+  // It only counts once you've rested at the top for a moment, so a fast scroll up doesn't throw you out.
+  let pullIdle = 0, atTopFor = 0, touchY = null;
+  const PULL_NEEDED = 420; // pixels of extra upward scrolling it takes
+  function addPull(amount) {
+    if (chosen < 0 || scrollY > 0 || atTopFor < 0.35 || ascent) return;
+    pull = Math.min(1, pull + amount / PULL_NEEDED); pullIdle = 0;
+    hint.textContent = pull < 1 ? 'Keep scrolling up to see all projects.' : hint.textContent;
+    if (pull >= 1) backToSurface(); // carries on smoothly from where the pull left the camera
+  }
+  addEventListener('wheel', (e) => { if (e.deltaY < 0) addPull(-e.deltaY * (e.deltaMode === 1 ? 40 : 1)); }, { passive: true });
+  addEventListener('touchstart', (e) => { touchY = e.touches[0].clientY; }, { passive: true });
+  addEventListener('touchmove', (e) => {
+    if (touchY === null) return;
+    const dy = e.touches[0].clientY - touchY; touchY = e.touches[0].clientY;
+    if (dy > 0) addPull(dy * 2.2);
+  }, { passive: true });
+  addEventListener('touchend', () => { touchY = null; }, { passive: true });
+  addEventListener('keydown', (e) => {
+    if (['ArrowUp', 'PageUp', 'Home'].includes(e.key) && !e.target.closest('input, textarea')) addPull(PULL_NEEDED * 0.34);
+  });
+  function settlePull(dt) {
+    atTopFor = chosen >= 0 && scrollY <= 0 ? atTopFor + dt : 0;
+    pullIdle += dt;
+    if (pull > 0 && pullIdle > 0.25) {
+      pull = Math.max(0, pull - dt * 1.5);
+      if (pull === 0 && chosen >= 0) hint.textContent = PROJECT_HINT(chosen);
+    }
+  }
+
+  // ================= Loop =================
+  let last = performance.now(), bank = 0, nextRain = 1.2, running = true;
+  function frame(now) {
+    if (!running) return;
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const time = now / 1000;
+    bank += dt;
+    let ticks = 0;
+    while (bank >= 1 / 60 && ticks < 4) { for (let i = 0; i < STEPS_PER_TICK; i++) step(); bank -= 1 / 60; ticks++; }
+    if (ticks === 4) bank = 0;
+    nextRain -= dt;
+    if (nextRain <= 0) { drop(Math.random() * viewW, Math.random() * viewH, 0.12 + Math.random() * 0.12, RIPPLE_RADIUS); nextRain = 1.4 + Math.random() * 2.6; }
+    rideUp(dt);
+    settlePull(dt);
+    updateIntro(dt);
+    updateDive(dt);
+    if (under < 1) moveBoats(dt, time);
+    moveThings(dt, time);
+    updateGauge();
+    render(time);
+    requestAnimationFrame(frame);
+  }
+  addEventListener('resize', () => { resize(); if (reduceMotion) still(); });
+  // with reduced motion there is no animation loop: redraw when the page scrolls
+  function still() { updateDive(0); moveThings(0, 0); updateGauge(); render(0); }
+  addEventListener('scroll', () => { if (reduceMotion) still(); }, { passive: true });
+
+  // ================= Depth gauge and the way back up =================
+  const reading = document.getElementById('reading'), gaugeList = document.getElementById('gauge-list');
+  let gaugeLinks = [], lastReading = '';
+  function buildGauge() { // one stop per section of the chosen project
+    gaugeList.innerHTML = '';
+    const stops = [['Surface', document.getElementById('top')], ...[...articles[chosen].querySelectorAll('.zone')].map((z) => [z.dataset.label, z])];
+    gaugeLinks = stops.map(([label, el]) => {
+      const li = document.createElement('li'), a = document.createElement('a');
+      a.href = '#'; a.textContent = label; a.target_ = el;
+      a.addEventListener('click', (e) => { e.preventDefault(); el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }); });
+      li.append(a); gaugeList.append(li); return a;
+    });
+  }
+  function updateGauge() {
+    if (chosen < 0) return;
+    // after "Back to the surface", keyboard focus returns to the top once the page arrives there
+    const metres = Math.round(metresAt(scrollY));
+    const text = metres <= 0 ? 'Surface' : `${metres} m`;
+    if (text !== lastReading) { reading.textContent = text; lastReading = text; }
+    root.classList.toggle('deep', metres > 33);
+    let current = gaugeLinks[0];
+    for (const a of gaugeLinks.slice(1)) if (a.target_.getBoundingClientRect().top < innerHeight * 0.6) current = a;
+    for (const a of gaugeLinks) a.setAttribute('aria-current', String(a === current));
+  }
+  document.addEventListener('visibilitychange', () => {
+    running = !document.hidden && !reduceMotion;
+    if (running) { last = performance.now(); requestAnimationFrame(frame); }
+  });
+
+  resize();
+  startIntro();
+  // contact links are the same for every project
+  const contact = document.getElementById('contact-links');
+  document.querySelectorAll('.contact').forEach((ul) => ul.append(contact.content.cloneNode(true)));
+  document.querySelectorAll('[data-placeholder]').forEach((a) => a.addEventListener('click', (e) => e.preventDefault()));
+  // a screenshot that can't be found becomes a labelled placeholder
+  const toSlot = (img) => { const d = document.createElement('div'); d.className = 'gif-slot'; d.textContent = `Image placeholder: ${img.alt}`; img.replaceWith(d); };
+  document.querySelectorAll('.shots img').forEach((img) => { if (img.complete && !img.naturalWidth) toSlot(img); else img.addEventListener('error', () => toSlot(img)); });
+
+  // screenshots open large when clicked; Esc, a click or the back button closes them
+  const viewer = document.getElementById('viewer'), viewerImg = document.getElementById('viewer-img'), viewerCap = document.getElementById('viewer-cap');
+  let viewerFrom = null;
+  document.querySelector('.depths').addEventListener('click', (e) => {
+    const img = e.target.closest('.shots img'); if (!img) return;
+    viewerFrom = img; viewerImg.src = img.src; viewerImg.alt = img.alt;
+    viewerCap.textContent = img.closest('figure').querySelector('figcaption')?.textContent || '';
+    viewer.hidden = false; viewer.tabIndex = -1; viewer.focus();
+  });
+  const closeViewer = () => { if (viewer.hidden) return false; viewer.hidden = true; viewerFrom?.focus?.({ preventScroll: true }); return true; };
+  viewer.addEventListener('click', closeViewer);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && closeViewer()) e.stopImmediatePropagation(); }, true);
+
+  if (reduceMotion) { running = false; still(); }
+  else requestAnimationFrame(frame);
+  // a late-loading font changes where the letters sit
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { glyphCache.clear(); layoutBoats(); if (reduceMotion) render(0); });
+  window.__water = { drop, heightAt, get boats() { return boats; }, get dive() { return { dive, under, depth, camHeight, camX, camY, chosen, pull, introOn }; }, get awake() { return awake.slice(); }, get boatsPop() { return boats.map((b) => +b.pop.toFixed(1)); } };
+})();
+</script>
+</body>
+</html>
